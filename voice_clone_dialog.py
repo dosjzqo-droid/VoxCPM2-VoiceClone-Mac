@@ -567,6 +567,17 @@ class VoiceCloneWorker(QThread):
 
     def _synthesize_raw_line(self, line_text: str, effective_ref: str, out_path: str) -> str:
         from api_voice_cloner import apply_audio_emotion_and_speed
+        from tts_engine import generate_silent_audio
+        import re
+
+        clean_text = line_text.strip()
+        # 1. Non-verbal check (e.g. only '...', '——', '♪', sound tags or silence)
+        # Prevents Edge-TTS NoAudioReceived, ElevenLabs errors, and Colab hallucination
+        has_pronounceable = bool(re.search(r'[\w\u1780-\u17ff\u4e00-\u9fff]', clean_text))
+        if not has_pronounceable:
+            generate_silent_audio(out_path, duration_sec=0.5)
+            return out_path
+
         if self.mode == "colab_voxcpm":
             from api_voice_cloner import clone_voice_colab_api
             effective_cfg = self.cfg_value
@@ -601,7 +612,7 @@ class VoiceCloneWorker(QThread):
         elif self.mode in ["edge_tts", "khmer_ai"]:
             voice = self.voice_id or "km-KH-PisethNeural"
             import asyncio, edge_tts, time
-            clean = line_text.strip() or "..."
+            clean = clean_text or "..."
             temp_mp3 = str(Path(out_path).with_suffix(".mp3"))
 
             # Robust auto-retry engine for unstable / jittery internet connections (up to 4 attempts)
@@ -621,9 +632,15 @@ class VoiceCloneWorker(QThread):
                     last_err = ex
                     time.sleep(1.2 * (attempt + 1))
 
+            # If Edge-TTS gave NoAudioReceived (e.g. empty audio packet or rate-limiting),
+            # generate clean silent audio clip rather than halting the whole movie batch
+            if last_err and "no audio" in str(last_err).lower():
+                generate_silent_audio(out_path, duration_sec=0.5)
+                return out_path
+
             if last_err and (not os.path.exists(temp_mp3) or os.path.getsize(temp_mp3) <= 300):
                 raise RuntimeError(
-                    f"🌐 បញ្ហាដាច់ការតភ្ជាប់អ៊ីនធឺណិត: ប្រព័ន្ធបានព្យាយាមភ្ជាប់ឡើងវិញ ៤ ដង តែបរាជ័យដោយសារអ៊ីនធឺណិតរអាក់រអួលខ្លាំង ឬដាច់ ({str(last_err)})"
+                    f"🌐 បញ្ហាតភ្ជាប់ Microsoft Edge TTS: ព្យាយាម ៤ ដងតែបរាជ័យដោយសារអ៊ីនធឺណិតរអាក់រអួល ({str(last_err)})"
                 )
 
             cmd = [
@@ -3435,7 +3452,8 @@ class VoiceCloneDialog(QDialog):
         self.progress_bar.setValue(0)
         short_err = (err_msg[:60] + "...") if len(err_msg) > 60 else err_msg
         self.lbl_status.setText(f"មានបញ្ហា: {short_err}")
-        if hasattr(self, "chk_limit_fallback_ai") and self.chk_limit_fallback_ai.isChecked():
+        is_colab_mode = (getattr(self, "current_engine_mode", "colab") == "colab")
+        if is_colab_mode and hasattr(self, "chk_limit_fallback_ai") and self.chk_limit_fallback_ai.isChecked():
             fallback_v = "km-KH-PisethNeural" if self.combo_fallback_voice.currentIndex() == 0 else "km-KH-SreymomNeural"
             v_name = "ពីសិទ្ធិ (Piseth)" if "Piseth" in fallback_v else "ស្រីមុំ (Sreymom)"
             reply = QMessageBox.question(
@@ -3451,8 +3469,8 @@ class VoiceCloneDialog(QDialog):
                 return
 
         QMessageBox.critical(
-            self, "មានបញ្ហាក្នុងការ Clone",
-            f"មិនអាច Clone សំឡេងបានទេ:\n{err_msg}\n\nអាចពិនិត្យមើល Colab Server ឬប្តូរទៅប្រើ 'ជម្រើសទី ២: សំឡេងខ្មែរ AI (ពីសិទ្ធិ/ស្រីមុំ)'!"
+            self, "មានបញ្ហាក្នុងការបង្កើតសំឡេង",
+            f"មិនអាចបង្កើតសំឡេងបានទេ:\n{err_msg}\n\nសូមពិនិត្យមើលការតភ្ជាប់អ៊ីនធឺណិត ឬសាកល្បងម្ដងទៀត។"
         )
 
     def on_save_cloned_audio(self):
