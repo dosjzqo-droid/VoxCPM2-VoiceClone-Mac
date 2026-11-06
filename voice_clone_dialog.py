@@ -40,6 +40,18 @@ try:
 except Exception:
     FFMPEG_EXE = "ffmpeg"
 
+
+def silent_subprocess_run(cmd, **kwargs):
+    """Executes a subprocess completely silently without flashing a CMD window on Windows."""
+    if sys.platform == "win32":
+        kwargs["creationflags"] = kwargs.get("creationflags", 0) | subprocess.CREATE_NO_WINDOW
+        if "startupinfo" not in kwargs:
+            si = subprocess.STARTUPINFO()
+            si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            si.wShowWindow = subprocess.SW_HIDE
+            kwargs["startupinfo"] = si
+    return subprocess.run(cmd, **kwargs)
+
 if getattr(sys, "frozen", False):
     APP_ROOT = Path(sys.executable).resolve().parent
 else:
@@ -124,7 +136,7 @@ def preprocess_reference_audio_16k(input_audio_path: str, temp_output_16k: str) 
         "-ar", "16000",
         temp_output_16k
     ]
-    res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    res = silent_subprocess_run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     if res.returncode != 0:
         raise RuntimeError("បរាជ័យក្នុងការបម្លែងសំឡេងគំរូទៅជា 16kHz")
     return temp_output_16k
@@ -287,7 +299,7 @@ def fast_neural_voice_match(
         "-ar", "48000",
         output_wav_path
     ]
-    subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    silent_subprocess_run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     if os.path.exists(temp_mp3):
         try:
             os.remove(temp_mp3)
@@ -326,7 +338,7 @@ def mux_cloned_voice_to_video_fast(
         output_video_path
     ]
 
-    res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    res = silent_subprocess_run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     if res.returncode != 0:
         raise RuntimeError(f"FFmpeg Muxing Error: {res.stderr}")
     return output_video_path
@@ -620,7 +632,7 @@ class VoiceCloneWorker(QThread):
                 "-ar", "48000",
                 out_path
             ]
-            subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            silent_subprocess_run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             if os.path.exists(temp_mp3):
                 try:
                     os.remove(temp_mp3)
@@ -2529,7 +2541,7 @@ class VoiceCloneDialog(QDialog):
                 if last_err and (not os.path.exists(temp_mp3) or os.path.getsize(temp_mp3) <= 300):
                     raise last_err
                 cmd = [FFMPEG_EXE, "-y", "-i", temp_mp3, "-ar", "48000", preview_wav]
-                subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                silent_subprocess_run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 if os.path.exists(temp_mp3):
                     os.remove(temp_mp3)
             except Exception as e:
@@ -2766,7 +2778,7 @@ class VoiceCloneDialog(QDialog):
             "-ar", "16000",
             out_ref
         ]
-        res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        res = silent_subprocess_run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         if res.returncode == 0 and os.path.exists(out_ref):
             full_p = str(Path(out_ref).resolve())
             if gender == "female":
@@ -3473,7 +3485,7 @@ class VoiceCloneDialog(QDialog):
                     "-b:a", "256k",
                     str(dest_file)
                 ]
-                subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
+                silent_subprocess_run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
             else:
                 shutil.copy2(str(src_path), str(dest_file))
 

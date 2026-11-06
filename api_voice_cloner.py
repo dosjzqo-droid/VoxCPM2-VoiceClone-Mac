@@ -7,12 +7,25 @@ Includes robust error handling for Quota Exceeded, Invalid Key, Network Timeout,
 """
 
 import os
+import sys
 import time
 import shutil
 import subprocess
 import hashlib
 import requests
 from pathlib import Path
+
+
+def silent_subprocess_run(cmd, **kwargs):
+    """Executes a subprocess completely silently without flashing a CMD window on Windows."""
+    if sys.platform == "win32":
+        kwargs["creationflags"] = kwargs.get("creationflags", 0) | subprocess.CREATE_NO_WINDOW
+        if "startupinfo" not in kwargs:
+            si = subprocess.STARTUPINFO()
+            si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            si.wShowWindow = subprocess.SW_HIDE
+            kwargs["startupinfo"] = si
+    return subprocess.run(cmd, **kwargs)
 
 
 
@@ -470,7 +483,7 @@ def apply_audio_emotion_and_speed(input_audio: str, output_audio: str, speed: fl
     cmd.append(temp_out)
 
     try:
-        subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
+        silent_subprocess_run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
         if os.path.exists(temp_out) and os.path.getsize(temp_out) > 0:
             if os.path.exists(output_audio):
                 try:
@@ -899,7 +912,7 @@ def clone_voice_colab_api(
                 ff_exe = imageio_ffmpeg.get_ffmpeg_exe()
                 trimmed_temp = str(cache_folder / f"ref_trimmed_{int(time.time()*1000)}.wav")
                 cmd_trim = [ff_exe, "-y", "-i", ref_audio_path, "-t", "6.5", "-ac", "1", "-ar", "16000", trimmed_temp]
-                r_trim = subprocess.run(cmd_trim, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                r_trim = silent_subprocess_run(cmd_trim, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 if r_trim.returncode == 0 and os.path.exists(trimmed_temp) and os.path.getsize(trimmed_temp) > 1000:
                     upload_path = trimmed_temp
             except Exception:
