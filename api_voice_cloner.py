@@ -751,6 +751,31 @@ def fetch_kiritts_voices(api_key: str) -> list:
 # ៤. FUNCTION សម្រាប់ GOOGLE COLAB GPU SERVER (VOXCPM2 + NGROK)
 # =========================================================================
 
+def sanitize_colab_url(raw_url: str) -> str:
+    """Sanitizes and auto-fixes malformed Colab / Cloudflare / Ngrok URLs (e.g. missing 'htt', spaces)."""
+    if not raw_url:
+        return ""
+    u = raw_url.strip().rstrip("/")
+    if u.startswith("ps://"):
+        u = "https://" + u[5:]
+    elif u.startswith("tps://"):
+        u = "https://" + u[6:]
+    elif u.startswith("ttps://"):
+        u = "https://" + u[7:]
+    elif not u.startswith("http://") and not u.startswith("https://"):
+        u = "https://" + u
+
+    # Replace spaces in domain with hyphens (Cloudflare tunnel slug format)
+    parts = u.split("://", 1)
+    if len(parts) == 2:
+        scheme, rest = parts
+        domain_and_path = rest.split("/", 1)
+        domain = domain_and_path[0].replace(" ", "-")
+        path = ("/" + domain_and_path[1]) if len(domain_and_path) > 1 else ""
+        u = f"{scheme}://{domain}{path}"
+    return u
+
+
 def ping_colab_server(colab_url: str, timeout: int = 10) -> dict:
     """
     ពិនិត្យការតភ្ជាប់ទៅកាន់ Google Colab Server តាមរយៈ Ngrok URL។
@@ -759,9 +784,7 @@ def ping_colab_server(colab_url: str, timeout: int = 10) -> dict:
     if not colab_url or not colab_url.strip():
         raise VoiceCloneAPIError("❌ មិនទាន់មាន Colab Public URL ទេ! សូមបញ្ចូល Ngrok URL ជាមុនសិន។")
 
-    clean_url = colab_url.strip().rstrip("/")
-    if not clean_url.startswith("http://") and not clean_url.startswith("https://"):
-        clean_url = "https://" + clean_url
+    clean_url = sanitize_colab_url(colab_url)
 
     health_url = f"{clean_url}/health"
     try:
@@ -853,9 +876,7 @@ def clone_voice_colab_api(
                 final_merged = merge_audio_chunks(chunk_files, output_path, pause_ms=140, sample_rate=48000)
                 return apply_audio_emotion_and_speed(final_merged, final_merged, speed=speed, emotion=emotion)
 
-    clean_url = colab_url.strip().rstrip("/")
-    if not clean_url.startswith("http://") and not clean_url.startswith("https://"):
-        clean_url = "https://" + clean_url
+    clean_url = sanitize_colab_url(colab_url)
 
     endpoint_url = f"{clean_url}/clone"
 
