@@ -16,7 +16,6 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-          cache: 'pip'
 
       - name: Install Dependencies
         run: |
@@ -39,4 +38,3 @@ jobs:
           name: VoxCPM2_VoiceClone_Studio_macOS_App
           path: dist/VoxCPM2_VoiceClone_Studio_macOS_App.zip
           retention-days: 30
-

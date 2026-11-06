@@ -35,13 +35,18 @@ def merge_audio_chunks(chunk_paths: list, out_file: str, pause_ms: int = 200, sa
             orig_times = np.linspace(0, dur, len(data), endpoint=False)
             target_times = np.linspace(0, dur, num_target, endpoint=False)
             data = np.interp(target_times, orig_times, data).astype(np.float32)
-        loaded.append(data.astype(np.float32))
+        # Strip dead silence from chunk boundaries to prevent stutter/choppy speech
+        t_data = trim_audio_edges(data.astype(np.float32), sample_rate, threshold=0.005, pad_ms=30)
+        if len(t_data) > 0:
+            loaded.append(t_data)
 
     if not loaded:
         raise RuntimeError("គ្មានឯកសារសំឡេងឃ្លាណាមួយត្រឹមត្រូវសម្រាប់ផ្គុំឡើយ")
 
     segments = []
-    pause_samples = np.zeros(int((pause_ms / 1000.0) * sample_rate), dtype=np.float32)
+    # Natural human sentence breath pause (140ms)
+    effective_pause = min(pause_ms, 150)
+    pause_samples = np.zeros(int((effective_pause / 1000.0) * sample_rate), dtype=np.float32)
     for i, d in enumerate(loaded):
         segments.append(d)
         if i < len(loaded) - 1:
@@ -63,7 +68,32 @@ class VoiceCloneAPIError(Exception):
     pass
 
 
-def split_khmer_chunks(text: str, max_chars: int = 35) -> list:
+
+def trim_audio_edges(data, sr: int, threshold: float = 0.005, pad_ms: int = 30):
+    """Trims dead silence from start and end of audio chunk with a gentle cushion."""
+    import numpy as np
+    frame_len = int(sr * 0.01) # 10ms frames
+    if len(data) < frame_len * 2:
+        return data
+
+    start_idx = 0
+    for i in range(0, len(data) - frame_len, frame_len):
+        if np.sqrt(np.mean(data[i:i+frame_len]**2)) >= threshold:
+            start_idx = max(0, i - int((pad_ms / 1000.0) * sr))
+            break
+
+    end_idx = len(data)
+    for i in range(len(data) - frame_len, 0, -frame_len):
+        if np.sqrt(np.mean(data[i:i+frame_len]**2)) >= threshold:
+            end_idx = min(len(data), i + frame_len + int((pad_ms / 1000.0) * sr))
+            break
+
+    if start_idx < end_idx:
+        return data[start_idx:end_idx]
+    return data
+
+
+def split_khmer_chunks(text: str, max_chars: int = 90) -> list:
     """
     Splits long Khmer text into natural, grammatical clauses/sentences to prevent
     autoregressive TTS models (VoxCPM2) from hallucinating or drifting into foreign accents.
@@ -785,8 +815,8 @@ def clone_voice_colab_api(
         raise VoiceCloneAPIError("❌ មិនមានអត្ថបទសម្រាប់និយាយទេ! សូមបញ្ចូលអត្ថបទ (Text)។")
 
     # Anti-hallucination auto-chunking for text longer than 35 characters
-    if len(clean_text) > 35:
-        chunks = split_khmer_chunks(clean_text, max_chars=35)
+    if len(clean_text) > 90:
+        chunks = split_khmer_chunks(clean_text, max_chars=90)
         if len(chunks) > 1:
             chunk_files = []
             for idx, c_text in enumerate(chunks):
@@ -807,7 +837,7 @@ def clone_voice_colab_api(
                 if c_res and os.path.exists(c_res) and os.path.getsize(c_res) > 300:
                     chunk_files.append(c_res)
             if chunk_files:
-                final_merged = merge_audio_chunks(chunk_files, output_path, pause_ms=180, sample_rate=48000)
+                final_merged = merge_audio_chunks(chunk_files, output_path, pause_ms=140, sample_rate=48000)
                 return apply_audio_emotion_and_speed(final_merged, final_merged, speed=speed, emotion=emotion)
 
     clean_url = colab_url.strip().rstrip("/")

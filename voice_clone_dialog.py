@@ -83,6 +83,31 @@ def is_voxcpm_ready() -> bool:
     return _VOXCPM_READY_CACHE
 
 
+
+def trim_audio_edges(data, sr: int, threshold: float = 0.005, pad_ms: int = 30):
+    """Trims dead silence from start and end of audio chunk with a gentle cushion."""
+    import numpy as np
+    frame_len = int(sr * 0.01) # 10ms frames
+    if len(data) < frame_len * 2:
+        return data
+
+    start_idx = 0
+    for i in range(0, len(data) - frame_len, frame_len):
+        if np.sqrt(np.mean(data[i:i+frame_len]**2)) >= threshold:
+            start_idx = max(0, i - int((pad_ms / 1000.0) * sr))
+            break
+
+    end_idx = len(data)
+    for i in range(len(data) - frame_len, 0, -frame_len):
+        if np.sqrt(np.mean(data[i:i+frame_len]**2)) >= threshold:
+            end_idx = min(len(data), i + frame_len + int((pad_ms / 1000.0) * sr))
+            break
+
+    if start_idx < end_idx:
+        return data[start_idx:end_idx]
+    return data
+
+
 def preprocess_reference_audio_16k(input_audio_path: str, temp_output_16k: str) -> str:
     """
     Resamples reference audio to 16kHz mono using FFmpeg.
@@ -478,7 +503,9 @@ class VoiceCloneWorker(QThread):
                     orig_times = np.linspace(0, dur, len(data), endpoint=False)
                     target_times = np.linspace(0, dur, num_target, endpoint=False)
                     data = np.interp(target_times, orig_times, data).astype(np.float32)
-                loaded.append(data.astype(np.float32))
+                t_data = trim_audio_edges(data.astype(np.float32), sample_rate, threshold=0.005, pad_ms=30)
+                if len(t_data) > 0:
+                    loaded.append(t_data)
             except Exception as e:
                 print(f"Error loading chunk audio {p}: {e}")
 
@@ -486,7 +513,8 @@ class VoiceCloneWorker(QThread):
             raise RuntimeError("គ្មានឯកសារសំឡេងឃ្លាណាមួយត្រឹមត្រូវសម្រាប់ផ្គុំឡើយ")
 
         segments = []
-        pause_samples = np.zeros(int((pause_ms / 1000.0) * sample_rate), dtype=np.float32)
+        effective_pause = min(pause_ms, 150)
+        pause_samples = np.zeros(int((effective_pause / 1000.0) * sample_rate), dtype=np.float32)
         for i, d in enumerate(loaded):
             segments.append(d)
             if i < len(loaded) - 1:
@@ -505,8 +533,8 @@ class VoiceCloneWorker(QThread):
     def _synthesize_single_line(self, line_text: str, effective_ref: str, out_path: str) -> str:
         """Synthesizes line with auto-chunking if line is long (>85 chars) to prevent AI language drift."""
         from api_voice_cloner import split_khmer_chunks
-        if len(line_text.strip()) > 35:
-            sub_chunks = split_khmer_chunks(line_text, max_chars=35)
+        if len(line_text.strip()) > 90:
+            sub_chunks = split_khmer_chunks(line_text, max_chars=90)
             if len(sub_chunks) > 1:
                 import uuid
                 sub_audios = []
@@ -516,7 +544,7 @@ class VoiceCloneWorker(QThread):
                     if sub_res and os.path.exists(sub_res) and os.path.getsize(sub_res) > 300:
                         sub_audios.append(sub_res)
                 if sub_audios:
-                    merged = self._merge_consecutive_audio_files(sub_audios, out_path, pause_ms=160)
+                    merged = self._merge_consecutive_audio_files(sub_audios, out_path, pause_ms=140)
                     for sa in sub_audios:
                         try:
                             os.unlink(sa)
@@ -767,7 +795,7 @@ class VoiceCloneWorker(QThread):
             elif temp_16k_m and os.path.exists(temp_16k_m):
                 effective_ref = temp_16k_m
 
-            chunks = split_khmer_chunks(self.text, max_chars=35)
+            chunks = split_khmer_chunks(self.text, max_chars=90)
             if len(chunks) <= 1:
                 self.progress_updated.emit(40)
                 self.status_updated.emit("កំពុងដំណើរការ Clone សំឡេង...")
@@ -793,7 +821,7 @@ class VoiceCloneWorker(QThread):
                 self.progress_updated.emit(94)
                 
                 # Merge clips with natural breath pause
-                out_audio = self._merge_consecutive_audio_files(chunk_audios, self.output_wav_path, pause_ms=220)
+                out_audio = self._merge_consecutive_audio_files(chunk_audios, self.output_wav_path, pause_ms=140)
                 
                 # Cleanup temp chunks
                 for ca in chunk_audios:

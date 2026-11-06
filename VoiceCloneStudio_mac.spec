@@ -71,6 +71,6 @@ coll = COLLECT(
 app = BUNDLE(
     coll,
     name='VoxCPM2_VoiceClone_Studio.app',
-    icon=str(HERE / 'assets' / 'voice_clone_logo.png'),
+    icon=str(HERE / 'assets' / 'voice_clone_logo.icns') if (HERE / 'assets' / 'voice_clone_logo.icns').exists() else str(HERE / 'assets' / 'voice_clone_logo.png'),
     bundle_identifier='csophouret.voxcpm2.voiceclonestudio',
 )
