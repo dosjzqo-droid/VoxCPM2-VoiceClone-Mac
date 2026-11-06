@@ -344,6 +344,52 @@ def mux_cloned_voice_to_video_fast(
     return output_video_path
 
 
+def generate_silent_audio(output_path: str, duration_sec: float = 0.5) -> bool:
+    """Generates a clean silent audio file (.wav or .mp3) using SoundFile, FFmpeg, or fallback."""
+    try:
+        import soundfile as sf
+        import numpy as np
+        sr = 48000 if str(output_path).lower().endswith(".wav") else 44100
+        dur = max(0.2, min(5.0, float(duration_sec)))
+        num_samples = int(dur * sr)
+        data = np.zeros(num_samples, dtype=np.float32)
+        os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
+        sf.write(output_path, data, sr)
+        if os.path.exists(output_path) and os.path.getsize(output_path) > 100:
+            return True
+    except Exception:
+        pass
+
+    try:
+        import imageio_ffmpeg
+        ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
+        dur = max(0.2, min(5.0, float(duration_sec)))
+        is_wav = str(output_path).lower().endswith(".wav")
+        cmd = [
+            ffmpeg_exe, "-y",
+            "-f", "lavfi",
+            "-i", "anullsrc=r=48000:cl=stereo" if is_wav else "anullsrc=r=44100:cl=stereo",
+            "-t", f"{dur:.2f}",
+        ]
+        if is_wav:
+            cmd.extend(["-acodec", "pcm_s16le", output_path])
+        else:
+            cmd.extend(["-q:a", "9", "-acodec", "libmp3lame", output_path])
+        res = silent_subprocess_run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        if os.path.exists(output_path) and os.path.getsize(output_path) > 100:
+            return True
+    except Exception:
+        pass
+
+    try:
+        silence_frame = b'\xff\xfb\x90d\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00' * 20
+        with open(output_path, "wb") as f:
+            f.write(silence_frame)
+        return True
+    except Exception:
+        return False
+
+
 class VoiceCloneWorker(QThread):
     status_updated = pyqtSignal(str)
     progress_updated = pyqtSignal(int)
@@ -567,7 +613,6 @@ class VoiceCloneWorker(QThread):
 
     def _synthesize_raw_line(self, line_text: str, effective_ref: str, out_path: str) -> str:
         from api_voice_cloner import apply_audio_emotion_and_speed
-        from tts_engine import generate_silent_audio
         import re
 
         clean_text = line_text.strip()

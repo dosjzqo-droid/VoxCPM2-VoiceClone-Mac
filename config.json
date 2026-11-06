@@ -19,9 +19,9 @@
     "default_voice": "Khmer - Sreymom (Female)",
     "voice_volume_percent": 300,
     "ai_vocal_hardware": "auto",
-    "selected_clone_mode_idx": 0,
+    "selected_clone_mode_idx": 3,
     "selected_api_provider_idx": 1,
     "autodub_clone_mode_idx": 0,
     "colab_notebook_url": "https://colab.research.google.com/drive/1NtwN9xpgyjm-YKbpkB2xW7hlDKssKKio?usp=sharing",
-    "colab_ngrok_url": "https://adrian-guestbook-april-quest.trycloudflare.com/"
+    "colab_ngrok_url": "https://playstation-casey-brothers-wines.trycloudflare.com/"
 }
