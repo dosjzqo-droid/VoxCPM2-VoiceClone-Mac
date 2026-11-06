@@ -588,13 +588,32 @@ class VoiceCloneWorker(QThread):
             return out
         elif self.mode in ["edge_tts", "khmer_ai"]:
             voice = self.voice_id or "km-KH-PisethNeural"
-            import asyncio, edge_tts
+            import asyncio, edge_tts, time
             clean = line_text.strip() or "..."
             temp_mp3 = str(Path(out_path).with_suffix(".mp3"))
-            async def _run_tts():
-                comm = edge_tts.Communicate(clean, voice)
-                await comm.save(temp_mp3)
-            asyncio.run(_run_tts())
+
+            # Robust auto-retry engine for unstable / jittery internet connections (up to 4 attempts)
+            last_err = None
+            for attempt in range(4):
+                try:
+                    if attempt > 0:
+                        self.status_updated.emit(f"កំពុងព្យាយាមតភ្ជាប់អ៊ីនធឺណិតឡើងវិញ (លើកទី {attempt + 1}/4)...")
+                    async def _run_tts():
+                        comm = edge_tts.Communicate(clean, voice)
+                        await comm.save(temp_mp3)
+                    asyncio.run(_run_tts())
+                    if os.path.exists(temp_mp3) and os.path.getsize(temp_mp3) > 300:
+                        last_err = None
+                        break
+                except Exception as ex:
+                    last_err = ex
+                    time.sleep(1.2 * (attempt + 1))
+
+            if last_err and (not os.path.exists(temp_mp3) or os.path.getsize(temp_mp3) <= 300):
+                raise RuntimeError(
+                    f"🌐 បញ្ហាដាច់ការតភ្ជាប់អ៊ីនធឺណិត: ប្រព័ន្ធបានព្យាយាមភ្ជាប់ឡើងវិញ ៤ ដង តែបរាជ័យដោយសារអ៊ីនធឺណិតរអាក់រអួលខ្លាំង ឬដាច់ ({str(last_err)})"
+                )
+
             cmd = [
                 FFMPEG_EXE, "-y",
                 "-i", temp_mp3,
@@ -2491,19 +2510,30 @@ class VoiceCloneDialog(QDialog):
         preview_wav = str(CACHE_DIR / f"preview_{'piseth' if is_male else 'sreymom'}.wav")
         if not os.path.exists(preview_wav):
             try:
-                import asyncio, edge_tts, subprocess
+                import asyncio, edge_tts, subprocess, time
                 clean = phrase
                 temp_mp3 = preview_wav + ".mp3"
-                async def _r():
-                    comm = edge_tts.Communicate(clean, voice_id)
-                    await comm.save(temp_mp3)
-                asyncio.run(_r())
+                last_err = None
+                for attempt in range(4):
+                    try:
+                        async def _r():
+                            comm = edge_tts.Communicate(clean, voice_id)
+                            await comm.save(temp_mp3)
+                        asyncio.run(_r())
+                        if os.path.exists(temp_mp3) and os.path.getsize(temp_mp3) > 300:
+                            last_err = None
+                            break
+                    except Exception as ex:
+                        last_err = ex
+                        time.sleep(1.0 * (attempt + 1))
+                if last_err and (not os.path.exists(temp_mp3) or os.path.getsize(temp_mp3) <= 300):
+                    raise last_err
                 cmd = [FFMPEG_EXE, "-y", "-i", temp_mp3, "-ar", "48000", preview_wav]
                 subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 if os.path.exists(temp_mp3):
                     os.remove(temp_mp3)
             except Exception as e:
-                QMessageBox.warning(self, "Preview Error", f"មិនអាចបង្កើតសំឡេងគំរូបានទេ:\n{e}")
+                QMessageBox.warning(self, "Preview Error", f"មិនអាចបង្កើតសំឡេងគំរូបានទេ (អាចមកពីអ៊ីនធឺណិតរអាក់រអួល):\n{e}")
                 return
         if os.path.exists(preview_wav):
             self.player.setSource(QUrl.fromLocalFile(preview_wav))

@@ -910,16 +910,30 @@ def clone_voice_colab_api(
                 "ref_audio": (Path(upload_path).name, file_handle, "audio/wav")
             }
 
-        try:
-            resp = requests.post(
-                endpoint_url,
-                data=payload_data,
-                files=files if files else None,
-                timeout=timeout
-            )
-        finally:
-            if file_handle:
-                file_handle.close()
+        resp = None
+        for attempt in range(2):
+            try:
+                if files and file_handle and file_handle.closed:
+                    file_handle = open(upload_path, "rb")
+                    files["ref_audio"] = (Path(upload_path).name, file_handle, "audio/wav")
+                resp = requests.post(
+                    endpoint_url,
+                    data=payload_data,
+                    files=files if files else None,
+                    timeout=timeout
+                )
+                break
+            except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as net_err:
+                if attempt == 0:
+                    time.sleep(2.0)
+                    continue
+                raise net_err
+            finally:
+                if file_handle and not file_handle.closed and attempt == 1:
+                    file_handle.close()
+
+        if file_handle and not file_handle.closed:
+            file_handle.close()
 
         # ---------------------------------------------------------------------
         # ជំហានទី ៣: ពិនិត្យលទ្ធផលឆ្លើយតប និងចាប់ Error
