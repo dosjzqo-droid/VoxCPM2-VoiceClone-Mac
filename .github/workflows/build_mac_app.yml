@@ -1,0 +1,42 @@
+name: Build macOS App Bundle
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install Dependencies
+        run: |
+          python3 -m pip install --upgrade pip
+          pip install -r requirements_mac.txt
+          pip install pyinstaller
+
+      - name: Build Standalone macOS .app
+        run: |
+          pyinstaller VoiceCloneStudio_mac.spec --clean --noconfirm
+
+      - name: Create Zip Package for macOS
+        run: |
+          cd dist
+          ditto -c -k --sequesterRsrc --keepParent VoxCPM2_VoiceClone_Studio.app VoxCPM2_VoiceClone_Studio_macOS_App.zip
+
+      - name: Upload Mac App to GitHub Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: VoxCPM2_VoiceClone_Studio_macOS_App
+          path: dist/VoxCPM2_VoiceClone_Studio_macOS_App.zip
+          retention-days: 30
+
