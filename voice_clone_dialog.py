@@ -29,7 +29,7 @@ from PyQt6.QtWidgets import (
     QRadioButton, QButtonGroup, QGroupBox, QSlider, QComboBox,
     QFrame, QWidget, QScrollArea, QApplication,
     QTableWidget, QTableWidgetItem, QHeaderView, QStackedWidget,
-    QCheckBox
+    QCheckBox, QSizePolicy
 )
 from PyQt6.QtGui import QFont, QColor
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
@@ -1355,11 +1355,13 @@ class VoiceCloneDialog(QDialog):
 
         # Stack for Plain Text vs SRT Mode
         self.stack_text_mode = QStackedWidget()
+        self.stack_text_mode.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
         # Page 0: Single Plain Text Edit Area
         self.edit_text = QTextEdit()
         self.edit_text.setPlaceholderText("បញ្ចូលអត្ថបទដែលចង់ឱ្យសំឡេង Cloned និយាយនៅទីនេះ...")
-        self.edit_text.setMinimumHeight(80)
+        self.edit_text.setMinimumHeight(180)
+        self.edit_text.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         if self.active_text:
             self.edit_text.setPlainText(self.active_text)
         self.stack_text_mode.addWidget(self.edit_text)
@@ -1435,7 +1437,9 @@ class VoiceCloneDialog(QDialog):
             "3\n00:00:04,400 --> 00:00:06,850\nSubRip Subtitle (SRT) format."
         )
         self.edit_srt.textChanged.connect(self._on_srt_text_changed)
-        v_srt.addWidget(self.edit_srt)
+        self.edit_srt.setMinimumHeight(180)
+        self.edit_srt.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        v_srt.addWidget(self.edit_srt, 1)
 
         # Bottom Bar
         h_srt_bot = QHBoxLayout()
@@ -1452,7 +1456,7 @@ class VoiceCloneDialog(QDialog):
         v_srt.addLayout(h_srt_bot)
 
         self.stack_text_mode.addWidget(self.widget_srt)
-        v_text.addWidget(self.stack_text_mode)
+        v_text.addWidget(self.stack_text_mode, 1)
 
         self.btn_tab_plain.clicked.connect(lambda: self.stack_text_mode.setCurrentIndex(0))
         self.btn_tab_srt.clicked.connect(lambda: self.stack_text_mode.setCurrentIndex(1))
@@ -1540,7 +1544,7 @@ class VoiceCloneDialog(QDialog):
         self.radio_single.toggled.connect(self.on_text_mode_changed)
         self.radio_batch.toggled.connect(self.on_text_mode_changed)
 
-        layout.addWidget(grp_text)
+        layout.addWidget(grp_text, 1)
 
         # --- SECTION 3: Settings ---
         self.grp_settings = QGroupBox("៣. ការកំណត់ VoxCPM2 (Model Configurations)")
@@ -2001,9 +2005,11 @@ class VoiceCloneDialog(QDialog):
             self._set_engine_mode("colab")
             if hasattr(self, "lbl_text_counter"):
                 self.lbl_text_counter.setVisible(False)
-            self.edit_text.setFixedHeight(85)
+            self.edit_text.setMinimumHeight(180)
+            self.edit_text.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
             if hasattr(self, "edit_srt"):
-                self.edit_srt.setFixedHeight(80)
+                self.edit_srt.setMinimumHeight(180)
+                self.edit_srt.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
             self.edit_text.setAcceptRichText(False)
             from PyQt6.QtGui import QFont
             font_kh = QFont("Kh Writhand", 15)
